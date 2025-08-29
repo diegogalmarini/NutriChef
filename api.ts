@@ -78,10 +78,10 @@ const recipeSchema = {
             },
             isStaple: {
                 type: Type.BOOLEAN,
-                description: "Set to true if this ingredient is a suggested pantry staple, not from the user's original list. Only use for the third creative recipe."
+                description: "Set to 'false' for user-provided ingredients. Set to 'true' ONLY for common pantry staples (like oil, spices) added in the third, creative recipe."
             }
           },
-          required: ['quantity', 'name']
+          required: ['quantity', 'name', 'isStaple']
         }
       },
       instructions: {
@@ -127,12 +127,16 @@ const handleGenerateRecipes = async (request: Request) => {
         const model = "gemini-2.5-flash";
         const languageInstruction = language === 'es' ? 'Spanish' : 'English';
 
-        const systemInstruction = `You are an expert nutritionist and chef. Your task is to generate 3 healthy recipes. Respond entirely in ${languageInstruction}.
-- The first two recipes must STRICTLY use ONLY the ingredients provided by the user. For these, the 'isStaple' property for all ingredients must be false or omitted.
-- The third recipe should use the provided ingredients and can creatively add 1-3 common pantry staples (like oil, spices, onion). For any added staple ingredient, set its 'isStaple' property to true.
-For each of the three recipes, provide all the information required by the JSON schema.`;
-        
-        const userPrompt = `Generate recipes for these ingredients: ${ingredients.join(', ')}.`;
+        const systemInstruction = `You are an expert chef specializing in healthy, delicious cuisine. Your task is to generate exactly three distinct, healthy recipes based on a list of ingredients provided by the user.
+
+Your response MUST be a valid JSON array containing three recipe objects that strictly adheres to the provided JSON schema. All text in the recipes (names, descriptions, instructions, etc.) MUST be in the language requested by the user.
+
+**Recipe Generation Rules:**
+1.  **First Two Recipes:** Use ONLY the ingredients from the user's list. For these ingredients, the 'isStaple' flag in the JSON output must be set to \`false\`.
+2.  **Third (Creative) Recipe:** Use the user's ingredients (with 'isStaple' set to \`false\`) AND creatively introduce 1-3 common pantry staples (like olive oil, salt, pepper, common spices). For these added staples ONLY, the 'isStaple' flag must be set to \`true\`.
+3.  **Completeness and Quality:** Ensure every single field in the JSON schema is filled with relevant, high-quality, and creative content for all three recipes. Do not omit any fields. The recipes should be genuinely appealing and well-described.`;
+
+        const userPrompt = `Please generate recipes in ${languageInstruction} using the following ingredients: ${ingredients.join(', ')}.`;
 
         const response = await ai.models.generateContent({
             model,
@@ -140,13 +144,21 @@ For each of the three recipes, provide all the information required by the JSON 
             config: {
                 systemInstruction,
                 responseMimeType: "application/json",
-                responseSchema: recipeSchema
+                responseSchema: recipeSchema,
             },
         });
 
         const jsonText = response.text.trim();
-        const recipes = JSON.parse(jsonText);
-        return createJsonResponse({ recipes });
+        if (!jsonText) {
+            throw new Error("The AI model returned an empty response. Please try again.");
+        }
+        
+        const parsedResponse = JSON.parse(jsonText);
+        if (!Array.isArray(parsedResponse)) {
+             throw new Error("The AI model returned an invalid format. Expected an array of recipes.");
+        }
+
+        return createJsonResponse({ recipes: parsedResponse });
 
     } catch (error) {
         return handleError(error, errorMessage);
@@ -253,15 +265,17 @@ const handleScanIngredients = async (request: Request) => {
 export default {
   fetch: async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
-    switch (url.pathname) {
-      case '/api/generate':
+    const pathname = url.pathname;
+
+    switch (pathname) {
+      case '/generate':
         return handleGenerateRecipes(request);
-      case '/api/image':
+      case '/image':
         return handleGenerateImage(request);
-      case '/api/scan':
+      case '/scan':
         return handleScanIngredients(request);
       default:
-        return new Response("Not Found", { status: 404 });
+        return new Response(`API Route Not Found: ${pathname}`, { status: 404 });
     }
   },
 };
