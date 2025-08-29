@@ -188,4 +188,7 @@ export const identifyIngredientsFromImage = async (base64Image: string, language
         return ingredients;
 
     } catch (error: any) {
-        
+        console.error("Gemini Service Error (identifyIngredientsFromImage):", error);
+        throw new Error(errorMessage || error.message);
+    }
+};
