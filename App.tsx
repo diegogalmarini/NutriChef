@@ -127,32 +127,50 @@ const App: React.FC = () => {
     const [isScanning, setIsScanning] = useState<boolean>(false);
     const [scannedIngredients, setScannedIngredients] = useState<string[]>([]);
     const [showConfirmationModal, setShowConfirmationModal] = useState<boolean>(false);
-    const [ranUrlGeneration, setRanUrlGeneration] = useState(false);
+    const [ranUrlProcessing, setRanUrlProcessing] = useState(false);
 
     const t = locales[language];
     
     useEffect(() => {
-        // Run only on initial mount
+        if (ranUrlProcessing) return;
+
         const urlParams = new URLSearchParams(window.location.search);
         
-        // Set language from URL first to ensure correct context for recipe generation
         const langFromUrl = urlParams.get('lang');
         if (langFromUrl === 'es' || langFromUrl === 'en') {
-            setLanguage(langFromUrl as 'en' | 'es');
+            setLanguage(langFromUrl);
         }
 
-        const ingredientsFromUrl = urlParams.get('ingredients');
-        if (ingredientsFromUrl && !ranUrlGeneration) {
-            const ingredientsList = ingredientsFromUrl.split(',').map(decodeURIComponent).filter(Boolean);
-            if (ingredientsList.length > 0) {
-                setIngredients(ingredientsList);
-                setRanUrlGeneration(true); // Flag to trigger generation in the next effect
+        const recipeFromUrl = urlParams.get('recipe');
+        if (recipeFromUrl) {
+            try {
+                const recipeJson = atob(decodeURIComponent(recipeFromUrl));
+                const sharedRecipe: Recipe = JSON.parse(recipeJson);
+                if (sharedRecipe && sharedRecipe.id) {
+                    setRecipes([sharedRecipe]);
+                    setIngredients(sharedRecipe.ingredients.map(ing => ing.name));
+                     // Clean the URL to avoid re-loading the same recipe on refresh/share.
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+            } catch (e) {
+                console.error("Failed to parse shared recipe from URL", e);
+                setError("Could not load the shared recipe. It might be invalid.");
+                setIngredients(getRandomIngredients()); // Fallback
             }
-        } else if (ingredients.length === 0) {
-            // Set random ingredients only if none are from URL and list is empty
-            setIngredients(getRandomIngredients());
+        } else {
+            const ingredientsFromUrl = urlParams.get('ingredients');
+            if (ingredientsFromUrl) {
+                const ingredientsList = ingredientsFromUrl.split(',').map(decodeURIComponent).filter(Boolean);
+                if (ingredientsList.length > 0) {
+                    setIngredients(ingredientsList);
+                    // Defer generation to the next effect
+                }
+            } else if (ingredients.length === 0) {
+                setIngredients(getRandomIngredients());
+            }
         }
-    }, []); // Empty dependency array ensures this runs only once
+        setRanUrlProcessing(true); // Mark URL processing as done
+    }, [ranUrlProcessing]);
 
     const handleGenerateRecipes = useCallback(async () => {
         if (ingredients.length === 0) {
@@ -174,7 +192,6 @@ const App: React.FC = () => {
             
             setLoadingMessage(t.loadingImages);
 
-            // Fetch images sequentially to handle API quota errors gracefully.
             for (const recipe of recipesWithIds) {
                 try {
                     const imageUrl = await generateRecipeImage(recipe.recipeName, recipe.description);
@@ -192,8 +209,6 @@ const App: React.FC = () => {
                     const isQuotaError = imgErr instanceof Error && imgErr.message.toLowerCase().includes("quota");
 
                     if (isQuotaError) {
-                        // On quota error, set the error message and apply fallbacks to all
-                        // recipes that don't have an image yet, then stop trying.
                         setImageError(prev => prev || (imgErr as Error).message);
                         setRecipes(prev => 
                             prev.map(r => ({
@@ -201,9 +216,8 @@ const App: React.FC = () => {
                                 imageUrl: r.imageUrl || getFallbackImageUrl(r.recipeName)
                             }))
                         );
-                        break; // Stop all further image generation attempts
+                        break; 
                     } else {
-                         // For other errors, just apply a fallback to the current recipe and continue.
                         const fallbackUrl = getFallbackImageUrl(recipe.recipeName);
                         setRecipes(prev => {
                             const newRecipes = [...prev];
@@ -232,11 +246,13 @@ const App: React.FC = () => {
     }, [ingredients, language, t]);
 
     useEffect(() => {
-        // Effect to trigger generation after URL ingredients are set
-        if (ranUrlGeneration && ingredients.length > 0 && recipes.length === 0 && !isLoading) {
-            handleGenerateRecipes();
+        // This effect triggers generation if ingredients came from the old URL format.
+        const urlParams = new URLSearchParams(window.location.search);
+        if (ranUrlProcessing && urlParams.has('ingredients') && !urlParams.has('recipe') && ingredients.length > 0 && recipes.length === 0 && !isLoading) {
+             handleGenerateRecipes();
         }
-    }, [ranUrlGeneration, ingredients, recipes, isLoading, handleGenerateRecipes]);
+    }, [ranUrlProcessing, ingredients, recipes, isLoading, handleGenerateRecipes]);
+
 
     useEffect(() => {
         try {
@@ -248,7 +264,7 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const prevLang = prevLangRef.current;
-        if (prevLang === language) return;
+        if (prevLang === language || !ranUrlProcessing) return; // Don't translate on initial load if lang is from URL
 
         const translateIngredient = (ingredient: string): string => {
             const lowerCaseIngredient = ingredient.toLowerCase();
@@ -266,7 +282,7 @@ const App: React.FC = () => {
 
         setIngredients(currentIngredients => currentIngredients.map(translateIngredient));
         prevLangRef.current = language;
-    }, [language]);
+    }, [language, ranUrlProcessing]);
 
 
     const handleAddIngredient = (ingredient: string) => {
@@ -339,13 +355,16 @@ const App: React.FC = () => {
             return;
         }
 
-        // Construct a full, valid URL to prevent "Invalid URL" errors in sandboxed environments.
-        const baseUrl = `${window.location.origin}${window.location.pathname}`;
-        const ingredientsQuery = `ingredients=${ingredients.map(encodeURIComponent).join(',')}`;
-        const langQuery = `lang=${language}`;
-        const shareUrl = `${baseUrl}?${ingredientsQuery}&${langQuery}`;
-
         try {
+            // Encode the entire recipe object for sharing
+            const recipeJson = JSON.stringify(recipe);
+            const base64Recipe = btoa(recipeJson); // btoa is safe for UTF-8 in modern browsers
+            const encodedRecipe = encodeURIComponent(base64Recipe);
+
+            const baseUrl = `${window.location.origin}${window.location.pathname}`;
+            const langQuery = `lang=${language}`;
+            const shareUrl = `${baseUrl}?recipe=${encodedRecipe}&${langQuery}`;
+
             await navigator.share({
                 title: `NutriChef: ${recipe.recipeName}`,
                 text: `Check out this healthy recipe I generated with NutriChef: ${recipe.description}`,
@@ -353,6 +372,7 @@ const App: React.FC = () => {
             });
         } catch (error) {
             console.error('Error sharing:', error);
+            // Don't show a user-facing error unless necessary
         }
     };
 
