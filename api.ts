@@ -118,22 +118,27 @@ const handleError = (error: any, defaultMessage: string) => {
 }
 
 const handleGenerateRecipes = async (request: Request) => {
+    let errorMessage = 'Failed to generate recipes.';
     try {
-        const { ingredients, language, errorMessage } = await request.json();
+        const body = await request.json();
+        const { ingredients, language } = body;
+        errorMessage = body.errorMessage || errorMessage;
         
         const model = "gemini-2.5-flash";
         const languageInstruction = language === 'es' ? 'Spanish' : 'English';
-        const prompt = `You are an expert nutritionist and chef. Your task is to generate 3 healthy recipes based on these ingredients: ${ingredients.join(', ')}. Respond entirely in ${languageInstruction}.
 
-- The first two recipes must STRICTLY use ONLY the provided ingredients. For these, the 'isStaple' property for all ingredients must be false or omitted.
+        const systemInstruction = `You are an expert nutritionist and chef. Your task is to generate 3 healthy recipes. Respond entirely in ${languageInstruction}.
+- The first two recipes must STRICTLY use ONLY the ingredients provided by the user. For these, the 'isStaple' property for all ingredients must be false or omitted.
 - The third recipe should use the provided ingredients and can creatively add 1-3 common pantry staples (like oil, spices, onion). For any added staple ingredient, set its 'isStaple' property to true.
-
 For each of the three recipes, provide all the information required by the JSON schema.`;
         
+        const userPrompt = `Generate recipes for these ingredients: ${ingredients.join(', ')}.`;
+
         const response = await ai.models.generateContent({
             model,
-            contents: prompt,
+            contents: userPrompt,
             config: {
+                systemInstruction,
                 responseMimeType: "application/json",
                 responseSchema: recipeSchema
             },
@@ -144,8 +149,7 @@ For each of the three recipes, provide all the information required by the JSON 
         return createJsonResponse({ recipes });
 
     } catch (error) {
-        const body = await request.json().catch(() => ({}));
-        return handleError(error, body.errorMessage || 'Failed to generate recipes.');
+        return handleError(error, errorMessage);
     }
 };
 
@@ -204,8 +208,11 @@ const handleGenerateImage = async (request: Request) => {
 };
 
 const handleScanIngredients = async (request: Request) => {
+    let errorMessage = 'Failed to identify ingredients.';
     try {
-        const { base64Image, language, errorMessage } = await request.json();
+        const body = await request.json();
+        const { base64Image, language } = body;
+        errorMessage = body.errorMessage || errorMessage;
 
         const model = "gemini-2.5-flash";
         const languageInstruction = language === 'es' ? 'Spanish' : 'English';
@@ -239,8 +246,7 @@ const handleScanIngredients = async (request: Request) => {
         return createJsonResponse({ ingredients });
 
     } catch (error) {
-        const body = await request.json().catch(() => ({}));
-        return handleError(error, body.errorMessage || 'Failed to identify ingredients.');
+        return handleError(error, errorMessage);
     }
 };
 
