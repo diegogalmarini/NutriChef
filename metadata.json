@@ -1,0 +1,7 @@
+{
+  "name": "NutriChef V2",
+  "description": "Generate healthy and delicious recipes based on the ingredients you have. Eat well, live well.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

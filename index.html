@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NutriChef</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+        background-color: #f0fdf4; /* A light, healthy green */
+    }
+    /* For custom scrollbar aesthetics */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9; 
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #22c55e; /* Green-500 */
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #16a34a; /* Green-600 */
+    }
+  </style>
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.16.0",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "jspdf": "https://aistudiocdn.com/jspdf@^2.5.1"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
