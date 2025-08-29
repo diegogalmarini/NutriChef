@@ -18,6 +18,8 @@ const locales = {
         add: "Add",
         errorTitle: "Oops!",
         errorContent: "An unknown error occurred.",
+        errorApiRecipes: "Failed to generate recipes. The AI chef might be on a break. Please check your ingredients and try again.",
+        errorApiScan: "Failed to identify ingredients from the image. The AI might be blinking. Please try again with a clearer picture.",
         errorEmptyIngredients: "Please add at least one ingredient to generate a healthy recipe.",
         loadingRecipes: "Crafting healthy recipes...",
         loadingImages: "Plating your healthy dish...",
@@ -41,6 +43,8 @@ const locales = {
         add: "Añadir",
         errorTitle: "¡Ups!",
         errorContent: "Ocurrió un error desconocido.",
+        errorApiRecipes: "No se pudieron generar las recetas. Puede que el chef de IA esté en un descanso. Por favor, revisa tus ingredientes e inténtalo de nuevo.",
+        errorApiScan: "No se pudieron identificar los ingredientes de la imagen. Puede que la IA esté parpadeando. Inténtalo de nuevo con una imagen más clara.",
         errorEmptyIngredients: "Por favor, añade al menos un ingrediente para generar una receta saludable.",
         loadingRecipes: "Creando recetas saludables...",
         loadingImages: "Emplatando tu plato saludable...",
@@ -130,6 +134,13 @@ const App: React.FC = () => {
     useEffect(() => {
         // Run only on initial mount
         const urlParams = new URLSearchParams(window.location.search);
+        
+        // Set language from URL first to ensure correct context for recipe generation
+        const langFromUrl = urlParams.get('lang');
+        if (langFromUrl === 'es' || langFromUrl === 'en') {
+            setLanguage(langFromUrl as 'en' | 'es');
+        }
+
         const ingredientsFromUrl = urlParams.get('ingredients');
         if (ingredientsFromUrl && !ranUrlGeneration) {
             const ingredientsList = ingredientsFromUrl.split(',').map(decodeURIComponent).filter(Boolean);
@@ -156,7 +167,7 @@ const App: React.FC = () => {
         setRecipes([]);
 
         try {
-            const generated = await generateRecipes(ingredients, language);
+            const generated = await generateRecipes(ingredients, language, t.errorApiRecipes);
             const recipesWithIds = generated.map(r => ({ ...r, id: `recipe-${Date.now()}-${Math.random()}` }));
 
             setRecipes(recipesWithIds); 
@@ -295,7 +306,7 @@ const App: React.FC = () => {
         reader.onload = async () => {
             try {
                 const base64Image = reader.result as string;
-                const foundIngredients = await identifyIngredientsFromImage(base64Image, language);
+                const foundIngredients = await identifyIngredientsFromImage(base64Image, language, t.errorApiScan);
                 setScannedIngredients(foundIngredients);
                 setShowConfirmationModal(true);
             } catch (err) {
@@ -331,7 +342,8 @@ const App: React.FC = () => {
         // Construct a full, valid URL to prevent "Invalid URL" errors in sandboxed environments.
         const baseUrl = `${window.location.origin}${window.location.pathname}`;
         const ingredientsQuery = `ingredients=${ingredients.map(encodeURIComponent).join(',')}`;
-        const shareUrl = `${baseUrl}?${ingredientsQuery}`;
+        const langQuery = `lang=${language}`;
+        const shareUrl = `${baseUrl}?${ingredientsQuery}&${langQuery}`;
 
         try {
             await navigator.share({
